@@ -1,18 +1,27 @@
 using OhMyThreads: @set, @tasks, DynamicScheduler, SerialScheduler, StaticScheduler
 using BenchmarkTools: @belapsed
+using H2Trees
+using StaticArrays
+using AdaptiveCrossApproximation
+using LinearAlgebra
+using Test
 
 
-function multithread_func(y::AbstractVector, x::AbstractVector; scheduler=SerialScheduler())
-
-	@tasks for i in eachindex(x, y)
-		@set scheduler = scheduler
-		y[i] = x[i]^2
-	end
+struct myfct end
+Base.eltype(::myfct) = Float64
+function (::myfct)(x, y)
+    if x == y
+        return 0.0
+    else
+        return inv(norm(x - y))
+    end
 end
+fct = myfct()
 
-len = 4_000_000_000
-x = rand(len)
-y = similar(x)
+dim = 25000
+pts = [@SVector rand(3) for i in 1:dim]
+tree = TwoNTree(pts, pts, 1 / 2^10; minvaluestest=100, minvaluestrial=100)
+
 thread_counts = collect(1:16)
 
 csv_path = joinpath(@__DIR__, "..", "results", "thread_benchmark.csv")
@@ -23,7 +32,7 @@ open(csv_path, "w") do io
 
 	for nchunks in thread_counts
 		curr_scheduler = StaticScheduler(nchunks=nchunks)
-		t = @belapsed multithread_func($y, $x; scheduler=$curr_scheduler)
+		t = @belapsed AdaptiveCrossApproximation.HMatrix($fct, $pts, $pts, $tree; scheduler=$curr_scheduler)
 		println(io, string(nchunks, ",", t))
 		flush(io)
 
